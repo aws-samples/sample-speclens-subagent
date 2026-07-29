@@ -1,0 +1,28 @@
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Test / coverage artifacts
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.mypy_cache/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Extractor output
+generated-tech.md
+generated-tech.yaml

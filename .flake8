@@ -1,0 +1,22 @@
+[flake8]
+max-line-length = 100
+extend-ignore =
+    # black formats slices with whitespace before ':'
+    E203,
+    # black places line breaks before binary operators
+    W503,
+    # long lines are left to black
+    E501
+exclude =
+    .git,
+    .venv,
+    venv,
+    build,
+    dist,
+    __pycache__,
+    *.egg-info
+per-file-ignores =
+    # Go/Java fixture snippets are embedded as string literals and must keep
+    # their original tab indentation, which W191/E101 would otherwise flag.
+    tests/test_go_extractor.py:W191,E101
+    tests/test_java_extractor.py:W191,E101

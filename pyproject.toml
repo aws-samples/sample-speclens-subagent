@@ -1,0 +1,87 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "speclens"
+version = "1.0.0"
+description = "Spec-to-code validation subagent with tree-sitter API surface extraction"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT-0" }
+keywords = ["specification", "validation", "tree-sitter", "testing", "api-surface"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = [
+    "tree-sitter>=0.23.0",
+    "tree-sitter-java>=0.23.0",
+    "tree-sitter-python>=0.23.0",
+    "tree-sitter-typescript>=0.23.0",
+    "tree-sitter-go>=0.23.0",
+    "tree-sitter-c-sharp>=0.23.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "black>=24.1",
+    "isort>=5.13",
+    "flake8>=7.0",
+    "mypy>=1.8",
+]
+
+[project.urls]
+Homepage = "https://github.com/aws-samples/sample-speclens-subagent"
+Source = "https://github.com/aws-samples/sample-speclens-subagent"
+Issues = "https://github.com/aws-samples/sample-speclens-subagent/issues"
+
+[project.scripts]
+extract-api-surface = "speclens.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+speclens = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+xfail_strict = true
+addopts = [
+    "--verbose",
+    "--color=yes",
+    "--durations=5",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["speclens"]
+
+[tool.black]
+line-length = 100
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["speclens"]
+
+[tool.mypy]
+check_untyped_defs = true
+show_error_codes = true
+pretty = true
+ignore_missing_imports = true
+
+# flake8 does not read pyproject.toml; its configuration lives in .flake8

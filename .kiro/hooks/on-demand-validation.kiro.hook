@@ -1,0 +1,12 @@
+{
+  "name": "On-Demand Spec Validation",
+  "version": "1.0.0",
+  "description": "User-triggered hook to run spec-to-code validation on demand. Validates existing or newly generated code against requirements by invoking the spec-validator agent.",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "Run the spec-validator agent against this project. Discover requirements files (look for **/requirements.md in capability directories). ALWAYS run the API surface extractor (the speclens package's extract-api-surface CLI) to generate generated-tech.md \u2014 do this in both brownfield and greenfield cases, regardless of whether a hand-written tech.md or DESIGN.md exists, so all signatures needed for test generation are extracted. If a hand-written design doc exists, use it for business intent while using generated-tech.md as the authoritative signature reference; if none exists (brownfield), generated-tech.md is the sole tech document. Then ALWAYS generate new integration and end-to-end tests from the specifications only (do not read source code) even if the repository already contains tests \u2014 prioritize e2e and integration tests, and write them to a namespaced subfolder so existing tests are not overwritten. Execute them against the implementation in generated-code/, classify any failures by severity (P1-P4) per the violation-classification steering doc, and produce: 1. The generated test files 2. A TestsToSpecCoverage.md report showing requirement-to-test traceability 3. A spec-validation-violations.md report if any tests fail"
+  }
+}

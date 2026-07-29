@@ -1,0 +1,12 @@
+{
+  "name": "Post-Task Spec Validation",
+  "version": "1.0.0",
+  "description": "Automatically runs spec-to-code validation after a coding task completes, checking that modified source code still conforms to its specification.",
+  "when": {
+    "type": "postTaskExecution"
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "A coding task just completed. Check if source code was modified in generated-code/src/main/java/ and if requirements files exist in the capability directories. If both conditions are met, run the spec-validator agent: discover requirements, then ALWAYS run the tree-sitter API surface extractor against the codebase to generate generated-tech.md (do this regardless of whether a hand-written tech.md or DESIGN.md exists — tree-sitter extracts all signatures needed for test generation; a hand-written doc, when present, supplies business intent). ALWAYS generate new integration and end-to-end tests from specs only (never read source code) even if the repository already has tests — prioritize e2e and integration tests, and write them to a namespaced subfolder so they do not overwrite existing tests. Execute them against the implementation, and report results. If tests fail, classify violations by severity (P1-P4) and suggest fixes. If all pass, confirm spec compliance. Write TestsToSpecCoverage.md and spec-validation-violations.md (if failures found) to the project root."
+  }
+}

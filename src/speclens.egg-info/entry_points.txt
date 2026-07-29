@@ -1,0 +1,2 @@
+[console_scripts]
+extract-api-surface = speclens.cli:main
