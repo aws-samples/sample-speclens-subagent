@@ -40,6 +40,21 @@ FASTAPI_METHOD_MAP = {
     "patch": "PATCH",
 }
 
+# aiohttp registers routes with a call rather than a decorator, e.g.
+#   app.router.add_get("/api/config/schema", handlers.api_config_schema)
+#   app.router.add_delete("/api/apps/{name}/migrate", handle_cleanup)
+# The `add_<method>` suffix names the HTTP verb; the handler is passed as an
+# argument instead of being decorated, so it is invisible to the decorator scan.
+AIOHTTP_ADD_METHODS = {
+    "add_get": "GET",
+    "add_post": "POST",
+    "add_put": "PUT",
+    "add_delete": "DELETE",
+    "add_patch": "PATCH",
+    "add_head": "HEAD",
+    "add_options": "OPTIONS",
+}
+
 CLASS_MARKERS = {"BaseModel", "Schema", "Serializer", "dataclass"}
 
 
@@ -93,6 +108,9 @@ class PythonExtractor:
         # Handle class-based views (Django REST, Flask-RESTful)
         for class_node in _find_nodes_by_type(root, "class_definition"):
             endpoints.extend(_extract_class_based_endpoints(class_node, source, file_path))
+
+        # Handle aiohttp call-form registrations: app.router.add_get(path, handler)
+        endpoints.extend(_extract_aiohttp_call_endpoints(root, source, file_path))
 
         return endpoints
 
@@ -376,6 +394,128 @@ def _extract_class_based_endpoints(
         )
 
     return endpoints
+
+
+def _extract_aiohttp_call_endpoints(
+    root: tree_sitter.Node, source: bytes, file_path: str
+) -> list[Endpoint]:
+    """Extract endpoints registered via aiohttp's call form.
+
+    aiohttp does not decorate handlers; routes are registered by calling
+    ``router.add_get("/path", handler)`` (and ``add_post``/``add_delete``/...).
+    The path is the first string argument and the handler is passed as the
+    second argument rather than decorated, so when the handler function is
+    defined in the same module we resolve it to recover its parameters and
+    return annotation.
+    """
+    endpoints: list[Endpoint] = []
+    handlers = _build_function_index(root, source)
+
+    for call_node in _find_nodes_by_type(root, "call"):
+        func_node = call_node.child_by_field_name("function")
+        if func_node is None or func_node.type != "attribute":
+            continue
+        attr = func_node.child_by_field_name("attribute")
+        if attr is None:
+            continue
+        attr_name = _node_text(attr, source)
+
+        args = call_node.child_by_field_name("arguments")
+        if args is None:
+            continue
+
+        # add_get(path, handler) / add_post(...) / add_delete(...)
+        if attr_name in AIOHTTP_ADD_METHODS:
+            method = AIOHTTP_ADD_METHODS[attr_name]
+            path = _positional_string_arg(args, source, 0)
+            handler_ref = _positional_arg_text(args, source, 1)
+        # add_route(method, path, handler)
+        elif attr_name == "add_route":
+            method_literal = _positional_string_arg(args, source, 0)
+            method = method_literal.upper() if method_literal else None
+            path = _positional_string_arg(args, source, 1)
+            handler_ref = _positional_arg_text(args, source, 2)
+        else:
+            continue
+
+        if method is None or path is None:
+            continue
+        handler_name = handler_ref.split(".")[-1] if handler_ref else ""
+
+        params: list[Parameter] = []
+        return_type: str | None = None
+        handler_def = handlers.get(handler_name)
+        if handler_def is not None:
+            params = _extract_function_params(handler_def, source)
+            params = [p for p in params if p.name != "self"]
+            _classify_path_params(params, path)
+            return_type = _get_return_annotation(handler_def, source)
+
+        request_body_type = None
+        for p in params:
+            if p.source == "body":
+                request_body_type = p.type
+                break
+
+        endpoints.append(
+            Endpoint(
+                http_method=method,
+                path=path,
+                handler_name=handler_name or handler_ref,
+                file_path=file_path,
+                line_number=call_node.start_point[0] + 1,
+                parameters=params,
+                return_type=return_type,
+                request_body_type=request_body_type,
+                auth_required=False,
+                roles=[],
+                decorators=[],
+            )
+        )
+
+    return endpoints
+
+
+def _build_function_index(
+    root: tree_sitter.Node, source: bytes
+) -> dict[str, tree_sitter.Node]:
+    """Map top-level and nested function names to their definition nodes."""
+    index: dict[str, tree_sitter.Node] = {}
+    for func_node in _find_nodes_by_type(root, "function_definition"):
+        name = _get_function_name(func_node, source)
+        if name and name not in index:
+            index[name] = func_node
+    return index
+
+
+def _positional_args(args_node: tree_sitter.Node) -> list[tree_sitter.Node]:
+    return [
+        child
+        for child in args_node.children
+        if child.type not in ("(", ")", ",", "comment", "keyword_argument")
+    ]
+
+
+def _positional_arg_text(args_node: tree_sitter.Node, source: bytes, index: int) -> str:
+    args = _positional_args(args_node)
+    if index < len(args):
+        return _node_text(args[index], source)
+    return ""
+
+
+def _positional_string_arg(
+    args_node: tree_sitter.Node, source: bytes, index: int
+) -> str | None:
+    args = _positional_args(args_node)
+    if index < len(args) and args[index].type == "string":
+        return _string_literal_value(args[index], source)
+    return None
+
+
+def _string_literal_value(string_node: tree_sitter.Node, source: bytes) -> str:
+    """Return the content of a string literal without surrounding quotes."""
+    text = _node_text(string_node, source)
+    return text.strip("'\"")
 
 
 def _get_class_name(class_node: tree_sitter.Node, source: bytes) -> str:

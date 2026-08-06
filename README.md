@@ -9,41 +9,86 @@ A Kiro subagent distributed as an aws-samples code package that independently va
 
 ## Installation
 
-Clone the repository and install with the bundled script, which copies the `.kiro/`
-configuration into your project and installs the `speclens` package that provides
-the `extract-api-surface` CLI.
+Setting up SpecLens in the project you want to validate ("your target project")
+has **two independent parts**:
 
-### Option 1: Install script (recommended)
+1. **Per-project configuration** — copy the `.kiro/` directory *into your target
+   project*. Kiro discovers the agent, hooks, and skills from the `.kiro/` in the
+   project you have open.
+2. **The `extract-api-surface` CLI** — install the `speclens` package into a
+   Python environment that is **on `PATH` when Kiro runs commands inside your
+   target project**. The agent shells out to `extract-api-surface`, so if the CLI
+   is not resolvable from your target project, extraction fails.
+
+> ⚠️ **The most common mistake:** installing the CLI into a virtual environment
+> that lives inside the *cloned SpecLens repo*. That venv is not active while you
+> work in your target project, so the agent won't find `extract-api-surface`.
+> Install the CLI **globally** (Option 1) or **into your target project's own
+> environment** (Option 2) instead.
+
+### Option 1: `pipx` — global CLI, works in every project (recommended)
+
+`pipx` installs `extract-api-surface` onto your global `PATH` in an isolated
+environment, so it resolves from *any* target project regardless of which venv
+that project uses. This is the most robust setup for running the agent in your
+target repo.
 
 ```bash
 git clone https://github.com/aws-samples/sample-speclens-subagent.git
 cd sample-speclens-subagent
 
-# Recommended: install into a virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
+# Install the CLI globally (isolated; no need to activate anything later)
+pipx install .            # or: python3 -m pip install --user .
 
+# Copy the subagent configuration into the project you want to validate
+cp -r .kiro /path/to/your/target/project/
+```
+
+Now, from `/path/to/your/target/project`, `extract-api-surface` is on `PATH` and
+the agent can run.
+
+### Option 2: Install into your target project's environment
+
+If your target project uses its own virtual environment (recommended for Python
+projects), install the CLI **into that environment** so it is present whenever the
+project's venv is active.
+
+```bash
+git clone https://github.com/aws-samples/sample-speclens-subagent.git
+
+# Activate YOUR TARGET PROJECT's environment first
+cd /path/to/your/target/project
+source .venv/bin/activate          # your project's venv, not SpecLens's
+
+# Install the CLI into it, and copy the configuration in
+pip install /path/to/sample-speclens-subagent
+cp -r /path/to/sample-speclens-subagent/.kiro .
+```
+
+The CLI is now available whenever this project's venv is active — including when
+Kiro runs the agent from within the project.
+
+### Option 3: Install script
+
+The bundled script copies `.kiro/` into the target and installs the CLI into the
+**currently active interpreter**. To get a working target-repo setup, activate the
+environment you want the CLI in *before* running it — your target project's venv
+(Option 2), or none at all for a `--user`/global install.
+
+```bash
+git clone https://github.com/aws-samples/sample-speclens-subagent.git
+cd sample-speclens-subagent
+
+# Activate the environment the CLI should land in (e.g. your target project's venv),
+# then run the installer against your target project:
 ./install.sh /path/to/your/target/project
 ```
 
 > On macOS and many Linux distributions the system Python is "externally managed"
-> (PEP 668) and `pip install` into it is refused. Use a virtual environment as
-> shown above, or `pipx`, rather than `--break-system-packages`.
+> (PEP 668) and `pip install` into it is refused. Use `pipx` (Option 1) or a
+> virtual environment (Option 2) rather than `--break-system-packages`.
 
-### Option 2: Manual setup
-
-```bash
-git clone https://github.com/aws-samples/sample-speclens-subagent.git
-cd sample-speclens-subagent
-
-# Copy the .kiro/ configuration into your project
-cp -r .kiro /path/to/your/project/
-
-# Install the extractor package (provides the extract-api-surface CLI)
-pip install .
-```
-
-### Option 3: Development install
+### Option 4: Development install
 
 To work on the extractor itself, install it in editable mode with the test
 dependencies and run the suite:
@@ -61,16 +106,25 @@ pytest
 
 ### Verifying the installation
 
+Run this **from your target project directory** (with that project's environment
+active, if it uses one) — that is the context the agent runs in:
+
 ```bash
+cd /path/to/your/target/project
 extract-api-surface --help
 ```
 
-If the command is not on your `PATH` (for example after a `--user` install), it
-can always be invoked as a module:
+If the command is found here, the agent will be able to invoke it. If it is not
+on your `PATH` (for example after a `--user` install), it can always be invoked as
+a module:
 
 ```bash
 python3 -m speclens.cli --help
 ```
+
+If the command works in the SpecLens clone but *not* in your target project, the
+CLI is installed in the wrong environment — see the ⚠️ note above and use Option 1
+or Option 2.
 
 ### After Installation
 
@@ -395,9 +449,15 @@ The bundled tree-sitter extractor — the `speclens` package under `src/speclens
 
 ### Installation
 
+The extractor ships with the same `speclens` package installed in the
+[Installation](#installation) section above — if you followed those steps, the
+`extract-api-surface` CLI is already available. To install *only* the extractor
+(without the `.kiro/` agent configuration), install the package into an
+environment on your `PATH`:
+
 ```bash
-# From the repository root
-pip install .
+# From the repository root — prefer pipx for a global CLI, or a venv
+pipx install .        # or: pip install .  (into the active venv)
 ```
 
 ### Usage

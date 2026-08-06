@@ -122,3 +122,60 @@ def test_flask_angle_bracket_path_params_are_classified(python_extractor):
 def test_module_without_routes_yields_no_endpoints(python_extractor):
     endpoints, _, _ = extract_all(python_extractor, "def helper(x):\n    return x\n", "utils.py")
     assert endpoints == []
+
+
+AIOHTTP_ROUTES = """
+from aiohttp import web
+
+
+async def api_config_schema(request):
+    return web.json_response({})
+
+
+async def handle_migrate_cleanup(request):
+    return web.json_response({})
+
+
+def setup_routes(app):
+    app.router.add_get("/api/config/schema", api_config_schema)
+    app.router.add_delete("/api/apps/{name}/migrate-cleanup", handlers.handle_migrate_cleanup)
+    app.router.add_route("POST", "/api/apps/{name}/deploy", handle_deploy)
+"""
+
+
+def test_aiohttp_add_method_calls_are_extracted(python_extractor):
+    """aiohttp registers routes via router.add_get(path, handler), not decorators."""
+    endpoints, _, _ = extract_all(python_extractor, AIOHTTP_ROUTES, "gateway.py")
+    by_path = {e.path: e for e in endpoints}
+
+    assert by_path["/api/config/schema"].http_method == "GET"
+    assert by_path["/api/config/schema"].handler_name == "api_config_schema"
+    assert by_path["/api/apps/{name}/migrate-cleanup"].http_method == "DELETE"
+
+
+def test_aiohttp_dotted_handler_reference_uses_final_name(python_extractor):
+    """A handler passed as `handlers.foo` is recorded by its function name."""
+    endpoints, _, _ = extract_all(python_extractor, AIOHTTP_ROUTES, "gateway.py")
+    by_path = {e.path: e for e in endpoints}
+
+    assert by_path["/api/apps/{name}/migrate-cleanup"].handler_name == "handle_migrate_cleanup"
+
+
+def test_aiohttp_handler_defined_in_module_recovers_path_params(python_extractor):
+    """When the handler is defined locally, its params are resolved and classified."""
+    source = '''
+from aiohttp import web
+
+
+async def get_app(request, name: str):
+    return web.json_response({})
+
+
+def setup_routes(app):
+    app.router.add_get("/api/apps/{name}", get_app)
+'''
+    endpoints, _, _ = extract_all(python_extractor, source, "gateway.py")
+
+    assert len(endpoints) == 1
+    name = [p for p in endpoints[0].parameters if p.name == "name"][0]
+    assert name.source == "path"

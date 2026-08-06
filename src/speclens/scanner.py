@@ -39,6 +39,8 @@ SURFACE_PATTERNS = {
         "*api.py",
         "*endpoints.py",
         "*router.py",
+        "*gateway.py",
+        "*handlers.py",
         "*schemas.py",
         "*models.py",
         "*serializers.py",
