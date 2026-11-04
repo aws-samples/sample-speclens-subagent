@@ -17,6 +17,8 @@ API surface extraction MUST be deterministic:
 
 **Tree-sitter extraction ALWAYS runs**, in both greenfield and brownfield cases. The agent must always generate the technical design by extracting all important signatures from the codebase, irrespective of whether a hand-written `DESIGN.md` / `tech.md` exists. A hand-written design document is frequently incomplete or stale, so the deterministic signature extraction is always needed to drive high-quality test generation.
 
+Whether a design document "exists" is decided per requirements file by the resolution order in Step 0.0 of the agent prompt: explicit `techDocPath` → sibling `design.md` / `tech.md` next to the requirements file (`.kiro/specs/<spec-name>/design.md`) → project-root `DESIGN.md` / `tech.md` → none. So within one run, some specs can be greenfield/hybrid and others brownfield.
+
 The role of the extraction output differs by case:
 1. **No `DESIGN.md` or `tech.md` exists** → brownfield mode: `generated-tech.md` is the sole tech document.
 2. **A hand-written design document exists** → greenfield/hybrid mode: the design document supplies business/semantic intent, and `generated-tech.md` supplies the authoritative, exhaustive signature reference. Where they disagree on the API surface, tree-sitter is ground truth for what signatures exist.
@@ -275,7 +277,7 @@ The spec-validator agent's workflow becomes:
 ALWAYS:
     Run tree-sitter extraction → generated-tech.md   # never skipped
 
-IF tech.md or DESIGN.md exists:
+IF a design doc was resolved for this spec (techDocPath, sibling design.md/tech.md, or project-root DESIGN.md/tech.md):
     # greenfield / hybrid path
     Use the hand-written document for business/semantic intent
     Use generated-tech.md as the authoritative signature reference

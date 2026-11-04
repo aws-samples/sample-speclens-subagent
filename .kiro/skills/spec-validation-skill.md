@@ -24,6 +24,8 @@ The user must provide or the agent must locate:
 
 ### Phase 0: Technical Design Generation (ALWAYS runs)
 
+**Resolve the design document per spec first.** A missing design doc is never an error. For each requirements file, use the first match: (1) explicit `techDocPath` if it exists (warn and fall through if it doesn't); (2) `design.md`, then `tech.md`, in the same directory as the requirements file, case-insensitive (the Kiro layout `.kiro/specs/<spec-name>/design.md`); (3) `DESIGN.md` / `tech.md` at the project root, then `docs/`; (4) none → brownfield for that spec. Each spec uses its own design doc; never share one spec's `design.md` with another. See Step 0.0 in the agent prompt.
+
 Regardless of whether a hand-written `DESIGN.md` / `tech.md` exists, ALWAYS run the tree-sitter API surface extractor (the `speclens` package's `extract-api-surface` CLI) against the codebase to produce `generated-tech.md`. Tree-sitter deterministically extracts all important signatures (routes, request/response types, path/query parameters, service interfaces, entities) needed for test generation. See `steering/spec-validation/brownfield-discovery.md` for the exact commands.
 
 - **Hand-written design doc present** → use it for business/semantic intent, and use `generated-tech.md` as the authoritative, exhaustive signature reference (tree-sitter wins on what the API surface actually is; the design doc wins on expected behavior).

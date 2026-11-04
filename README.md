@@ -6,6 +6,105 @@ A Kiro subagent distributed as an aws-samples code package that independently va
 
 - Python 3.10 or newer
 - `pip` (bundled with Python)
+- [`pipx`](https://pipx.pypa.io/) for the recommended global install (`brew install pipx` on macOS)
+- A current version of Kiro
+
+## Quick Start: run SpecLens as a Kiro subagent
+
+Run these commands verbatim. Replace only `/path/to/your/target/project` with the
+project you want to validate.
+
+**1. Install the extractor CLI and copy the agent into your project:**
+
+```bash
+git clone https://github.com/aws-samples/sample-speclens-subagent.git
+cd sample-speclens-subagent
+
+pipx install .
+pipx ensurepath
+
+export TARGET=/path/to/your/target/project
+mkdir -p "$TARGET/.kiro" && cp -R .kiro/. "$TARGET/.kiro/"
+```
+
+Open a new terminal after `pipx ensurepath` so the updated `PATH` takes effect.
+
+**2. Check that the CLI resolves from your project:**
+
+```bash
+cd /path/to/your/target/project
+extract-api-surface --help
+```
+
+If you see `command not found`, see [Verifying the installation](#verifying-the-installation).
+
+**3. Open your project in Kiro.** Open the target project folder in Kiro. If it
+was already open, quit and restart Kiro so it re-reads `.kiro/agents/`.
+
+**4. Check that Kiro registered the agent:**
+
+```bash
+grep "profile load error" "$(ls -d ~/.kiro/logs/*/ | tail -1)kiro.log" | grep spec-validator
+```
+
+No output means the agent loaded. Any output means Kiro rejected the profile; see
+[Troubleshooting](#troubleshooting-the-agent-is-not-registered).
+
+**5. Run the agent from Kiro chat.** Paste this prompt and edit the paths:
+
+```
+Run the spec-validator subagent with these inputs:
+- requirementsPath: ./.kiro/specs/payments/requirements.md
+- codebasePath: .
+- outputDir: ./src/test/
+```
+
+Only `requirementsPath` and `codebasePath` are needed. `techDocPath`,
+`testFramework`, `outputDir`, `executeTests` and `maxRepairIterations` are
+optional; see [Agent inputs](#agent-inputs). You don't need `techDocPath` for Kiro
+specs: the agent uses the `design.md` next to each `requirements.md`; see
+[How the design document is found](#how-the-design-document-is-found).
+
+> **Large spec sets:** Run one requirements file per invocation. Hundreds of
+> SHALL criteria across many specs won't fit in a single agent session. Kiro then
+> splits the work into a multi-step workflow instead of running the subagent.
+
+### Troubleshooting: the agent is not registered
+
+If Kiro replies with something like *"spec-validator.json isn't registered with the
+workflow engine"* and starts a workflow instead of the subagent, Kiro refused to load
+the agent profile. Find the reason:
+
+```bash
+grep -h "profile load error" ~/.kiro/logs/*/kiro.log | grep spec-validator | tail -1
+```
+
+The most common cause is a `.kiro/agents/spec-validator.json` copied from an older
+SpecLens release. That file used fields such as `systemPrompt`, `toolsSettings` and
+`steeringDocs`, which current Kiro rejects
+(`Agent profile uses fields this agent engine does not support: toolsSettings`).
+Fix it by pulling the latest SpecLens and copying the agent profile again:
+
+```bash
+cd sample-speclens-subagent
+git pull
+cp .kiro/agents/spec-validator.json /path/to/your/target/project/.kiro/agents/
+```
+
+Then restart Kiro and repeat step 4 above.
+
+If step 4 prints nothing but Kiro still says the agent isn't registered, check
+where the profile actually is. It must be at `.kiro/agents/spec-validator.json`.
+On macOS, `cp -r .kiro/ "$TARGET"` (note the trailing slash) copies the
+*contents* of `.kiro` into the project root, which leaves `agents/`, `hooks/` and
+`steering/` there, where Kiro never looks:
+
+```bash
+ls "$TARGET/.kiro/agents/spec-validator.json" "$TARGET/agents/spec-validator.json" 2>&1
+```
+
+If it's in `$TARGET/agents/`, delete the stray copies and re-copy using the
+command in step 1.
 
 ## Installation
 
@@ -41,7 +140,8 @@ cd sample-speclens-subagent
 pipx install .            # or: python3 -m pip install --user .
 
 # Copy the subagent configuration into the project you want to validate
-cp -r .kiro /path/to/your/target/project/
+mkdir -p /path/to/your/target/project/.kiro
+cp -R .kiro/. /path/to/your/target/project/.kiro/
 ```
 
 Now, from `/path/to/your/target/project`, `extract-api-surface` is on `PATH` and
@@ -62,7 +162,7 @@ source .venv/bin/activate          # your project's venv, not SpecLens's
 
 # Install the CLI into it, and copy the configuration in
 pip install /path/to/sample-speclens-subagent
-cp -r /path/to/sample-speclens-subagent/.kiro .
+mkdir -p .kiro && cp -R /path/to/sample-speclens-subagent/.kiro/. .kiro/
 ```
 
 The CLI is now available whenever this project's venv is active — including when
@@ -323,7 +423,7 @@ sample-speclens-subagent/
 ├── install.sh                              # One-step installer for target projects
 ├── .kiro/                                  # Subagent configuration copied into your project
 │   ├── agents/
-│   │   └── spec-validator.json             # Agent definition (inputs, outputs, system prompt)
+│   │   └── spec-validator.json             # Agent profile (prompt, tools, resources, permissions)
 │   ├── hooks/
 │   │   ├── spec-code-validation.kiro.hook  # Auto-triggers on src/main/**/*.java edits
 │   │   ├── post-task-validation.kiro.hook  # Fires after coding tasks complete
@@ -426,22 +526,26 @@ Users explicitly invoke validation with options:
 ## Shell Command Restrictions
 
 The agent needs `execute_bash` to install the extractor, run the API surface
-extractor, and execute generated test suites. To avoid granting an unrestricted
-shell, `execute_bash` is constrained by an allowlist in
-`.kiro/agents/spec-validator.json` under `toolsSettings.execute_bash`:
+extractor, and execute generated test suites. Shell access is controlled by the
+`permissions` block in `.kiro/agents/spec-validator.json`:
 
-- `denyByDefault: true` — any command not matched by `allowedCommands` is refused.
-- `allowedCommands` — only the commands the workflow actually needs: the
-  extractor install/run (`pip install <this repository>`,
-  `extract-api-surface ...`), test runners (`pytest`, `mvn`/`mvnw`,
-  `gradle`/`gradlew`, `npm`/`npx`/`jest`/`yarn`/`pnpm`, `go test`, `dotnet test`),
-  and read-only inspection commands (`ls`, `cat`, `grep`, `find`, `test`, `echo`).
-- `deniedCommands` — an explicit denylist (evaluated before the allowlist) that
-  blocks destructive or network operations such as `rm`, `sudo`, `curl`, `wget`,
-  `ssh`, `chmod`, `git push`, and `git commit`.
+- `policies: ["read-only-shell"]` lets read-only commands run without asking.
+- A `shell` rule with `"effect": "allow"` lists the only commands that run
+  without approval: the extractor install/run (`pip install` of this repository or
+  `speclens`, `extract-api-surface ...`), test runners (`pytest`, `mvn`/`mvnw`,
+  `gradle`/`gradlew`, `npm`/`npx`/`jest`/`yarn`/`pnpm`, `go test`, `dotnet test`)
+  and inspection commands (`ls`, `cat`, `grep`, `find`, `test`, `echo`, `which`).
+- Kiro asks for your approval before any other command runs. Destructive and
+  network commands such as `rm`, `sudo`, `curl`, `wget`, `ssh`, `chmod` and
+  `git push` are not on the allowlist.
 
-Regex entries are anchored. To support additional build tools or test runners,
-extend `allowedCommands` rather than removing the allowlist.
+Patterns are globs (`*` matches any text), not regular expressions. To support
+another build tool or test runner, add a pattern to the `shell` rule's `match`
+list. Don't replace the list with `*`. `tests/test_package_assets.py` fails if
+the allowlist is removed or includes a destructive command.
+
+> Current Kiro rejects the older `toolsSettings` / `allowedTools` fields in this
+> profile, and then won't register the agent. Use `permissions` only.
 
 ## API Surface Extractor (Brownfield Tool)
 
@@ -497,6 +601,43 @@ By default, only files matching API-surface naming conventions are scanned (e.g.
 Worked examples live in `examples/`: `examples/DESIGN.md` is a sample technical
 design document (CardDemo) and `examples/prompt.md` is a sample invocation prompt.
 The paths below refer to files in *your* project, not in this repository.
+
+### How the design document is found
+
+The design document is optional. For each requirements file, the agent uses the
+first match below. If nothing matches, that spec runs in brownfield mode from
+`generated-tech.md` alone.
+
+1. `techDocPath`, if you pass it and the file exists. If it doesn't exist, the
+   agent logs a warning and moves on to rule 2.
+2. `design.md`, then `tech.md`, in the same folder as the requirements file. This
+   is the standard Kiro layout:
+   ```
+   .kiro/specs/<spec-name>/requirements.md
+   .kiro/specs/<spec-name>/design.md
+   ```
+   Case doesn't matter (`design.md`, `DESIGN.md`).
+3. `DESIGN.md` or `tech.md` in the project root, then in `docs/`.
+
+A spec's own `design.md` always beats a project-level one. When one run covers
+several specs, each spec is paired with its own design document. The chosen
+document for each spec is listed in `TestsToSpecCoverage.md`.
+
+### Agent inputs
+
+The agent reads its inputs from your chat message. Write them as `name: value` lines.
+
+| Input | Required | Default | Meaning |
+|---|---|---|---|
+| `requirementsPath` | yes | discovers `**/requirements.md` | Requirements directory, file, or glob |
+| `codebasePath` | yes | `.` | Root of the codebase to validate (tree-sitter extraction runs here) |
+| `techDocPath` | no | auto-resolved per spec | Optional hand-written design doc. Overrides discovery when the file exists |
+| `testFramework` | no | `auto-detect` | `auto-detect`, `junit5`, `pytest`, `jest`, `go-test`, or `xunit` |
+| `outputDir` | no | `src/test/` | Where generated tests and reports are written |
+| `executeTests` | no | `true` | Run the generated tests after generating them |
+| `maxRepairIterations` | no | `3` | Maximum auto-repair cycles |
+
+### Example prompts
 
 To trigger the spec-validator subagent in Kiro:
 

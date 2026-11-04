@@ -100,10 +100,13 @@ If any condition is not met, the hook exits silently.
 2. Look for files matching: **/requirements.md, **/specs.md
 3. Look for files containing REQ-* patterns
 
-# Technical design doc discovery (OPTIONAL — supplements always-run extraction):
-1. Look for: tech.md, TECH.md, DESIGN.md in project root
-2. Look for: docs/tech.md, docs/TECH.md
-3. Look for files containing "API Contract" or "## Endpoints" or "## Architecture" headings
+# Technical design doc discovery (OPTIONAL — supplements always-run extraction).
+# Resolved per requirements file; first match wins; a miss is never an error:
+1. Explicit techDocPath, if given and the file exists (if missing: warn, continue)
+2. design.md, then tech.md, in the SAME directory as the requirements file
+   (Kiro layout: .kiro/specs/<spec-name>/design.md), matched case-insensitively
+3. DESIGN.md or tech.md (case-insensitive) in project root, then docs/
+4. None found -> brownfield mode for that spec (generated-tech.md only)
 # NOTE: tree-sitter extraction ALWAYS runs to produce generated-tech.md,
 # whether or not a hand-written design doc is found above.
 ```
